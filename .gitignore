@@ -1,0 +1,43 @@
+# --- Virtual Environments ---
+# Ignore the environment folders where your libraries are installed
+venv/
+venvs/
+.venv/
+env/
+
+# --- Python & Cache ---
+# Ignore compiled files and Jupyter checkpoints
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.ipynb_checkpoints/
+# This covers pycache inside subfolders too
+**/__pycache__/
+
+# --- Large Data Files ---
+# Ignore the raw Kaggle datasets (they are too big for GitHub)
+data/raw/*.csv
+# Ignore the processed/cleaned versions
+data/processed/*.csv
+# Ignore any AI models you save later (.pkl, .h5, .pt)
+data/models/
+
+# --- Environment Secrets ---
+# VERY IMPORTANT: This keeps your Neon DB password/URL safe
+.env
+.flaskenv
+
+# --- OS & IDE Files ---
+# Ignore VS Code and system-specific files
+.vscode/
+.idea/
+.DS_Store
+*.swp
+Thumbs.db
+
+# --- Logs ---
+*.log
+
+*.png
