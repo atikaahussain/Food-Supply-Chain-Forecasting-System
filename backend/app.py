@@ -12,6 +12,8 @@ from flask_cors import CORS
 from backend.configfile import Config
 from backend.database.models import db
 from backend.api import data_bp  # Import from the API package
+from backend.api.forecast import forecast_bp
+from backend.services.scheduler import ForecastScheduler
 
 def create_app():
     app = Flask(__name__)
@@ -22,6 +24,7 @@ def create_app():
     
     # Register blueprint
     app.register_blueprint(data_bp, url_prefix='/api/data')
+    app.register_blueprint(forecast_bp, url_prefix='/api/forecast')
     
     # Debug: Print routes to Terminal 1 to confirm it worked
     with app.app_context():
@@ -30,6 +33,8 @@ def create_app():
             print(f"Endpoint: {rule.endpoint} -> {rule}")
         print("--------------------------\n")
         
+    scheduler = ForecastScheduler(app)
+    scheduler.start()
     return app
 
 app = create_app()

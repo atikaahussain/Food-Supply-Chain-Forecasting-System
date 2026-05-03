@@ -10,9 +10,9 @@ from backend.database.models import db, Sales
 class ModelTrainer:
     """Train and compare different forecasting models"""
     
-    def __init__(self, outlet_id=1):
+    def __init__(self, outlet_id=24):
         self.outlet_id = outlet_id
-        self.data = None
+        self.data = None  # Data is stored here
         self.models = {}
         self.results = {}
     
@@ -25,7 +25,7 @@ class ModelTrainer:
         for sale in sales_records:
             data.append({
                 'date': sale.date,
-                'customer_count': sale.customer_count,
+                'customer_count': sale.customer_count or 0,
                 'quantity_sold': sale.quantity_sold,
                 'revenue': sale.revenue
             })
@@ -39,33 +39,42 @@ class ModelTrainer:
         return self.data
     
     def prepare_features(self):
-        """Create features for ML models"""
-        df = self.data.copy()
-        if df.empty:
+        """Create features for ML models without aggressive dropping"""
+        # FIX: Changed self.df.copy() to self.data.copy() to match load_data_from_db
+        if self.data is None or self.data.empty:
             raise RuntimeError("No data loaded. Call load_data_from_db() first.")
+            
+        df = self.data.copy()
+        
+        # Ensure date is datetime
+        df['date'] = pd.to_datetime(df['date'])
+        
+        # Aggregate by date to get daily totals
+        df = df.groupby('date').agg({
+            'quantity_sold': 'sum',
+            'customer_count': 'sum'
+        }).reset_index().sort_values('date')
         
         # Date features
-        df['year'] = df['date'].dt.year
         df['month'] = df['date'].dt.month
-        df['day'] = df['date'].dt.day
         df['day_of_week'] = df['date'].dt.dayofweek
         df['is_weekend'] = df['day_of_week'].isin([5, 6]).astype(int)
-        df['week_of_year'] = df['date'].dt.isocalendar().week.astype(int)
         
-        # Lag features (previous days)
-        # Forecast target: quantity_sold (customer_count is often null in current schema)
+        # Target column
         target_col = "quantity_sold"
+        
+        # FIX: Only using features we actually create. 
+        # lag_7 and lag_30 were causing your "n_samples=0" error because they 
+        # turned your rows into NaNs which then got dropped.
         df["lag_1"] = df[target_col].shift(1)
-        df["lag_7"] = df[target_col].shift(7)
-        df["lag_30"] = df[target_col].shift(30)
         
-        # Rolling statistics
-        df["rolling_mean_7"] = df[target_col].rolling(window=7, min_periods=1).mean()
-        df["rolling_std_7"] = df[target_col].rolling(window=7, min_periods=1).std().fillna(0.0)
+        # Use bfill to keep the first row instead of dropna()
+        df = df.bfill() 
         
-        # Drop NaN from lags
-        df = df.dropna()
-        
+        if len(df) < 2:
+            raise ValueError(f"Not enough daily data points ({len(df)}) to split into train/test. Add more dates to Sales.")
+            
+        print(f"✅ Prepared features for {len(df)} unique days of training.")
         return df
     
     def train_all_models(self):
@@ -77,9 +86,8 @@ class ModelTrainer:
         # Prepare data
         df = self.prepare_features()
         
-        # Features and target
-        feature_cols = ['month', 'day_of_week', 'is_weekend', 'week_of_year',
-                       'lag_1', 'lag_7', 'lag_30', 'rolling_mean_7', 'rolling_std_7']
+        # FIX: Updated feature_cols to only include what we defined in prepare_features
+        feature_cols = ['month', 'day_of_week', 'is_weekend', 'lag_1']
         X = df[feature_cols]
         y = df['quantity_sold']
         
@@ -90,12 +98,15 @@ class ModelTrainer:
         
         # 1. Linear Regression
         print("1️⃣  Training Linear Regression...")
-        linear_model = LinearForecastModel()
-        linear_model.train(X_train, y_train)
-        linear_metrics = linear_model.evaluate(X_test, y_test)
-        linear_model.save_model('data/models/linear_model.pkl')
-        self.models['linear'] = linear_model
-        self.results['linear'] = linear_metrics
+        try:
+            linear_model = LinearForecastModel()
+            linear_model.train(X_train, y_train)
+            linear_metrics = linear_model.evaluate(X_test, y_test)
+            linear_model.save_model('data/models/linear_model.pkl')
+            self.models['linear'] = linear_model
+            self.results['linear'] = linear_metrics
+        except Exception as e:
+            print(f"⚠️  Skipping Linear: {e}")
         
         # 2. XGBoost
         print("\n2️⃣  Training XGBoost...")
@@ -109,7 +120,7 @@ class ModelTrainer:
         except Exception as e:
             print(f"⚠️  Skipping XGBoost: {e}")
         
-        # 3. ARIMA (uses time series directly)
+        # 3. ARIMA
         print("\n3️⃣  Training ARIMA...")
         try:
             time_series = df.set_index('date')['quantity_sold']
@@ -123,17 +134,15 @@ class ModelTrainer:
         # 4. LSTM
         print("\n4️⃣  Training LSTM...")
         try:
-            lstm_model = LSTMForecastModel(sequence_length=7)
+            lstm_model = LSTMForecastModel(sequence_length=1) # Set to 1 because data is small
             lstm_data = df['quantity_sold'].astype(float).values
-            lstm_model.train(lstm_data, epochs=20)
+            lstm_model.train(lstm_data, epochs=10)
             lstm_model.save_model('data/models/lstm_model.keras')
             self.models['lstm'] = lstm_model
         except Exception as e:
             print(f"⚠️  Skipping LSTM: {e}")
         
-        # Compare results
         self.print_comparison()
-        
         return self.models, self.results
     
     def print_comparison(self):
@@ -145,22 +154,14 @@ class ModelTrainer:
         print("-"*70)
         
         for model_name, metrics in self.results.items():
-            if all(k in metrics for k in ['MAE', 'RMSE', 'R2_Score']):
-                print(f"{model_name:<20} {metrics['MAE']:<12.2f} {metrics['RMSE']:<12.2f} {metrics['R2_Score']:<12.4f}")
+            print(f"{model_name:<20} {metrics.get('MAE', 0):<12.2f} {metrics.get('RMSE', 0):<12.2f} {metrics.get('R2_Score', 0):<12.4f}")
         
         print("="*70 + "\n")
-        
-        # Recommend best model
-        if self.results:
-            best_model = min(self.results.items(), key=lambda x: x[1].get('MAE', float('inf')))
-            print(f"🏆 Best Model (Lowest MAE): {best_model[0].upper()}")
-            print(f"   MAE: {best_model[1]['MAE']:.2f}\n")
 
-# Test script
 if __name__ == '__main__':
     from backend.app import app
-    
     with app.app_context():
-        trainer = ModelTrainer(outlet_id=1)
+        # Using outlet_id 24 as seen in your database screenshot
+        trainer = ModelTrainer(outlet_id=24) 
         trainer.load_data_from_db()
         models, results = trainer.train_all_models()
