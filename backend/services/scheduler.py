@@ -97,8 +97,8 @@ class ForecastScheduler:
               </tr>
         """
         
-        for i, (date, customers) in enumerate(zip(forecast_result['forecast_dates'], 
-                                                   forecast_result['next_week_predictions'])):
+        for date, customers in zip(forecast_result.get('forecast_dates', []), 
+                                     forecast_result.get('next_week_predictions', [])):
             html += f"<tr><td>{date}</td><td>{customers}</td></tr>"
         
         html += """

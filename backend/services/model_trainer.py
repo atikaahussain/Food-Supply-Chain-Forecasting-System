@@ -1,6 +1,9 @@
+import os
+import pickle
 import pandas as pd
 import numpy as np
 from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler
 from backend.models.linear_model import LinearForecastModel
 from backend.models.arima_model import ARIMAForecastModel
 from backend.models.xgboost_model import XGBoostForecastModel
@@ -63,16 +66,16 @@ class ModelTrainer:
         # Target column
         target_col = "quantity_sold"
         
-        # FIX: Only using features we actually create. 
-        # lag_7 and lag_30 were causing your "n_samples=0" error because they 
-        # turned your rows into NaNs which then got dropped.
+        # Add lag features for memory: yesterday, last week, and weekly rolling average
         df["lag_1"] = df[target_col].shift(1)
+        df["lag_7"] = df[target_col].shift(7)
+        df["rolling_mean_7"] = df[target_col].shift(1).rolling(window=7, min_periods=1).mean()
         
-        # Use bfill to keep the first row instead of dropna()
-        df = df.bfill() 
+        # Fill early missing values to preserve rows and keep the memory features usable
+        df = df.bfill().fillna(0)
         
-        if len(df) < 2:
-            raise ValueError(f"Not enough daily data points ({len(df)}) to split into train/test. Add more dates to Sales.")
+        if len(df) < 8:
+            raise ValueError(f"Not enough daily data points ({len(df)}) to train with weekly lag features. Add more dates to Sales.")
             
         print(f"✅ Prepared features for {len(df)} unique days of training.")
         return df
@@ -86,8 +89,8 @@ class ModelTrainer:
         # Prepare data
         df = self.prepare_features()
         
-        # FIX: Updated feature_cols to only include what we defined in prepare_features
-        feature_cols = ['month', 'day_of_week', 'is_weekend', 'lag_1']
+        # FIX: Updated feature_cols to include lag/memory signals for yesterday and last week
+        feature_cols = ['month', 'day_of_week', 'is_weekend', 'lag_1', 'lag_7', 'rolling_mean_7']
         X = df[feature_cols]
         y = df['quantity_sold']
         
@@ -96,12 +99,29 @@ class ModelTrainer:
             X, y, test_size=0.2, shuffle=False
         )
         
+        # Scale features and save the scaler for production
+        scaler = StandardScaler()
+        X_train_scaled = pd.DataFrame(
+            scaler.fit_transform(X_train),
+            columns=feature_cols,
+            index=X_train.index
+        )
+        X_test_scaled = pd.DataFrame(
+            scaler.transform(X_test),
+            columns=feature_cols,
+            index=X_test.index
+        )
+        os.makedirs('data/models', exist_ok=True)
+        with open('data/models/scaler.pkl', 'wb') as scaler_file:
+            pickle.dump(scaler, scaler_file)
+        print('✅ Saved feature scaler to data/models/scaler.pkl')
+        
         # 1. Linear Regression
         print("1️⃣  Training Linear Regression...")
         try:
             linear_model = LinearForecastModel()
-            linear_model.train(X_train, y_train)
-            linear_metrics = linear_model.evaluate(X_test, y_test)
+            linear_model.train(X_train_scaled, y_train)
+            linear_metrics = linear_model.evaluate(X_test_scaled, y_test)
             linear_model.save_model('data/models/linear_model.pkl')
             self.models['linear'] = linear_model
             self.results['linear'] = linear_metrics
@@ -112,8 +132,8 @@ class ModelTrainer:
         print("\n2️⃣  Training XGBoost...")
         try:
             xgb_model = XGBoostForecastModel()
-            xgb_model.train(X_train, y_train)
-            xgb_metrics = xgb_model.evaluate(X_test, y_test)
+            xgb_model.train(X_train_scaled, y_train)
+            xgb_metrics = xgb_model.evaluate(X_test_scaled, y_test)
             xgb_model.save_model('data/models/xgboost_model.pkl')
             self.models['xgboost'] = xgb_model
             self.results['xgboost'] = xgb_metrics
