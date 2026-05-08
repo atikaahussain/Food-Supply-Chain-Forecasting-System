@@ -50,7 +50,7 @@ class DataProcessor:
             self.df["date"] = pd.to_datetime(self.df["date"], errors="coerce")
             self.df = self.df.dropna(subset=["date"])
 
-        # Remove outliers (5-sigma for less aggressive filtering) for numeric columns (skip obvious identifiers)
+        # Remove outliers (3-sigma) for numeric columns (skip obvious identifiers)
         id_like = {"id", "outlet_id", "item_id", "center_id", "meal_id", "week"}
         for col in numeric_cols:
             if col in id_like:
@@ -60,8 +60,7 @@ class DataProcessor:
             if std == 0 or np.isnan(std):
                 continue
             mean = float(series.mean())
-            # Use 5-sigma instead of 3-sigma to be less aggressive (only remove extreme outliers)
-            mask = (series < mean - 5 * std) | (series > mean + 5 * std)
+            mask = (series < mean - 3 * std) | (series > mean + 3 * std)
             if mask.any():
                 self.df = self.df.loc[~mask].copy()
 

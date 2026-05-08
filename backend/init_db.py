@@ -1,9 +1,14 @@
 import os
 import sys
+from pathlib import Path
 
-from app import app
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-from database.models import db, User, Outlet, FoodItem
+# Ensure repo root is on sys.path when running as a script
+repo_root = Path(__file__).resolve().parents[1]
+if str(repo_root) not in sys.path:
+    sys.path.insert(0, str(repo_root))
+
+from backend.app import app
+from backend.database.models import db, User, Outlet, FoodItem
 
 def init_database():
     with app.app_context():
