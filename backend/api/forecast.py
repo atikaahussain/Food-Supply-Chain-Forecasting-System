@@ -62,8 +62,8 @@ def get_forecast(forecast_id):
     GET /api/forecast/123
     """
     try:
-        forecast = db.session.query(Forecast).get(forecast_id)
-        
+        forecast = db.session.get(Forecast, forecast_id)
+
         if not forecast:
             return jsonify({'error': 'Forecast not found'}), 404
         
@@ -118,7 +118,10 @@ def get_latest_forecast(outlet_id):
         
         items = {}
         for item_forecast, food_item in item_forecasts:
-            items[food_item.name] = item_forecast.predicted_quantity
+            items[food_item.name] = {
+                'predicted_quantity': item_forecast.predicted_quantity,
+                'category': food_item.category
+            }
         
         result = {
             'forecast_id': forecast.id,
@@ -177,8 +180,8 @@ def delete_forecast(forecast_id):
     DELETE /api/forecast/123
     """
     try:
-        forecast = db.session.query(Forecast).get(forecast_id)
-        
+        forecast = db.session.get(Forecast, forecast_id)
+
         if not forecast:
             return jsonify({'error': 'Forecast not found'}), 404
         
@@ -227,5 +230,55 @@ def check_performance(outlet_id):
             'needs_retraining': needs_retraining,
             'days_evaluated': days_back
         }), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@forecast_bp.route('/chart-data/<int:outlet_id>', methods=['GET'])
+def get_chart_data(outlet_id):
+    """
+    Get aggregated data for dashboard chart: 
+    Past 14 days of actual sales + next 7 days of forecast.
+    """
+    try:
+        from sqlalchemy import func
+        from backend.database.models import Sales, Forecast
+        from datetime import timedelta
+
+        # 1. Get historical actuals (last 14 days)
+        end_date = datetime.now().date()
+        start_date = end_date - timedelta(days=14)
+        
+        sales_data = db.session.query(
+            Sales.date,
+            func.sum(Sales.customer_count).label('actual')
+        ).filter(
+            Sales.outlet_id == outlet_id,
+            Sales.date >= start_date,
+            Sales.date <= end_date
+        ).group_by(Sales.date).order_by(Sales.date).all()
+
+        chart_data = []
+        for s in sales_data:
+            chart_data.append({
+                'date': s.date.isoformat(),
+                'actual': int(s.actual or 0),
+                'predicted': None
+            })
+
+        # 2. Get latest forecast predictions
+        latest_forecast = db.session.query(Forecast).filter(
+            Forecast.outlet_id == outlet_id
+        ).order_by(Forecast.created_at.desc()).first()
+
+        if latest_forecast:
+            # For the chart, we'll just show the main prediction for the forecast date
+            # In a real app, we might store the full 7-day sequence
+            chart_data.append({
+                'date': latest_forecast.forecast_date.isoformat(),
+                'actual': None,
+                'predicted': latest_forecast.predicted_customers
+            })
+
+        return jsonify(chart_data), 200
     except Exception as e:
         return jsonify({'error': str(e)}), 500

@@ -131,33 +131,45 @@ class ForecastEngine:
         return daily_df
     
     def generate_forecast(self, model_type='auto', days_ahead=7):
-        """Orchestrate the forecasting process"""
+        """Orchestrate the forecasting process.
+        
+        Tries to load a saved model first. If no saved model file exists,
+        trains a fresh model on the fly from DB data (no pre-training required).
+        """
         historical_df = self.fetch_historical_data()
         feature_df = self.prepare_features(historical_df)
-        
+
         if model_type == 'auto':
-            # Defaulting to XGBoost if data is too small for full auto-select logic
-            model_type = 'xgboost' if len(feature_df) < 30 else self.auto_select_model(feature_df)
-        
-        model = self.load_model(model_type)
-        
-        if model_type in ['linear', 'xgboost']:
-            predictions = self._predict_with_ml_model(model, feature_df, days_ahead)
-        elif model_type == 'arima':
-            predictions = self._predict_with_arima(model, feature_df, days_ahead)
-        elif model_type == 'lstm':
-            predictions = self._predict_with_lstm(model, feature_df, days_ahead)
-        
-        # Save and return
+            model_type = self.auto_select_model(feature_df)
+
+        # ── Try loading a saved model; fall back to on-the-fly training ────
+        try:
+            model = self.load_model(model_type)
+            print(f"✅ Using saved {model_type} model")
+            if model_type in ['linear', 'xgboost']:
+                predictions = self._predict_with_ml_model(model, feature_df, days_ahead)
+            elif model_type == 'arima':
+                predictions = self._predict_with_arima(model, feature_df, days_ahead)
+            elif model_type == 'lstm':
+                predictions = self._predict_with_lstm(model, feature_df, days_ahead)
+            else:
+                predictions = self._train_and_predict_on_the_fly(model_type, feature_df, days_ahead)
+        except FileNotFoundError:
+            print(f"⚠️  No saved model for '{model_type}' — training on the fly from DB data...")
+            predictions = self._train_and_predict_on_the_fly(model_type, feature_df, days_ahead)
+
+        # ── Persist and return ───────────────────────────────────────────────
         forecast_id = self.save_forecast_to_db(predictions, model_type, 0.85)
-        
+
         return {
             'forecast_id': forecast_id,
             'outlet_id': self.outlet_id,
             'model_used': model_type,
             'next_day_prediction': int(predictions[0]),
-            'forecast_dates': [(datetime.now().date() + timedelta(days=i+1)).isoformat() 
-                              for i in range(len(predictions))],
+            'forecast_dates': [
+                (datetime.now().date() + timedelta(days=i + 1)).isoformat()
+                for i in range(len(predictions))
+            ],
             'next_week_predictions': predictions
         }
 
@@ -193,6 +205,39 @@ class ForecastEngine:
     def _predict_with_arima(self, model, feature_df, days_ahead):
         forecast = model.predict(steps=days_ahead)
         return [max(0, int(p)) for p in forecast]
+
+    def _train_and_predict_on_the_fly(self, model_type, feature_df, days_ahead):
+        """Train a model directly on historical DB data and predict.
+        Used when no saved model file exists on disk.
+        """
+        feature_cols = self.feature_cols
+        X = feature_df[feature_cols]
+        y = feature_df['quantity_sold']
+
+        scaler = StandardScaler()
+        X_scaled = scaler.fit_transform(X)
+        X_scaled = pd.DataFrame(X_scaled, columns=feature_cols, index=X.index)
+
+        if model_type in ('linear', 'xgboost'):
+            if model_type == 'xgboost':
+                model = XGBoostForecastModel()
+            else:
+                model = LinearForecastModel()
+            model.train(X_scaled, y)
+            return self._predict_with_ml_model(model, feature_df, days_ahead, scaler=scaler)
+
+        elif model_type == 'arima':
+            model = ARIMAForecastModel()
+            model.train(feature_df['quantity_sold'])
+            return self._predict_with_arima(model, feature_df, days_ahead)
+
+        else:
+            # Fallback: linear regression always works
+            print(f"⚠️  Unsupported on-the-fly model '{model_type}', falling back to linear")
+            model = LinearForecastModel()
+            model.train(X_scaled, y)
+            return self._predict_with_ml_model(model, feature_df, days_ahead, scaler=scaler)
+
 
     def forecast_item_by_id(self, food_item_id, model_type='auto', days_ahead=7):
         """Generate an item-specific forecast using per-item historical sales."""

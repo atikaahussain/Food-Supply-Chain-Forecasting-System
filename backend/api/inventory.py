@@ -3,7 +3,7 @@ from backend.database.models import db, Recipe, Ingredient, FoodItem, Forecast
 from backend.services.inventory_planner import InventoryPlanner
 from backend.services.supplier_manager import SupplierManager
 from backend.services.waste_tracker import WasteTracker
-from backend.services.alert_manager import AlertManager
+from backend.services.alert_service import AlertService
 
 inventory_bp = Blueprint('inventory', __name__)
 
@@ -227,8 +227,8 @@ def get_waste_analysis(outlet_id):
 def get_alerts(outlet_id):
     """Get active alerts"""
     try:
-        manager = AlertManager(outlet_id)
-        alerts = manager.get_active_alerts()
+        service = AlertService(outlet_id)
+        alerts = service.get_active_alerts()
         
         return jsonify({
             'outlet_id': outlet_id,
@@ -244,25 +244,17 @@ def get_alerts(outlet_id):
 def check_and_generate_alerts(outlet_id):
     """Check stock and generate alerts"""
     try:
-        manager = AlertManager(outlet_id)
+        service = AlertService(outlet_id)
         
-        # Check stock levels
-        stock_alerts = manager.check_stock_levels()
-        
-        # Check vs forecast if provided
-        forecast_id = request.get_json().get('forecast_id')
-        demand_alerts = []
-        
-        if forecast_id:
-            demand_alerts = manager.check_upcoming_demand(forecast_id)
-        
-        total_alerts = stock_alerts + demand_alerts
+        # This will now check everything including stock and quality
+        alerts_created = service.generate_all_alerts(
+            forecast_id=request.get_json().get('forecast_id')
+        )
         
         return jsonify({
             'success': True,
-            'alerts_generated': len(total_alerts),
-            'stock_alerts': len(stock_alerts),
-            'demand_alerts': len(demand_alerts)
+            'alerts_summary': alerts_created,
+            'total_generated': sum(alerts_created.values())
         }), 200
         
     except Exception as e:
@@ -291,6 +283,85 @@ def get_all_ingredients():
             })
         
         return jsonify(result), 200
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@inventory_bp.route('/alerts/generate/<int:outlet_id>', methods=['POST'])
+def generate_alerts(outlet_id):
+    """
+    Generate all alerts for an outlet
+    
+    POST /api/inventory/alerts/generate/1
+    Body: {
+        "forecast_id": 123  # optional
+    }
+    """
+    try:
+        data = request.get_json() or {}
+        forecast_id = data.get('forecast_id')
+        
+        alert_service = AlertService(outlet_id)
+        alerts_created = alert_service.generate_all_alerts(forecast_id)
+        
+        active_alerts = alert_service.get_active_alerts()
+        
+        return jsonify({
+            'success': True,
+            'alerts_created': alerts_created,
+            'total_active': len(active_alerts),
+            'active_alerts': active_alerts
+        }), 200
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@inventory_bp.route('/alerts/resolve/<int:alert_id>', methods=['POST'])
+def resolve_alert(alert_id):
+    """
+    Resolve an alert
+    
+    POST /api/inventory/alerts/resolve/5
+    """
+    try:
+        alert_service = AlertService(outlet_id=1)
+        success = alert_service.resolve_alert(alert_id)
+        
+        if success:
+            return jsonify({
+                'success': True,
+                'message': 'Alert resolved'
+            }), 200
+        else:
+            return jsonify({'error': 'Alert not found'}), 404
+            
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@inventory_bp.route('/alerts/config/<int:outlet_id>', methods=['POST'])
+def configure_alert_thresholds(outlet_id):
+    """
+    Configure alert thresholds
+    
+    POST /api/inventory/alerts/config/1
+    Body: {
+        "demand_spike": 0.25,
+        "low_accuracy": 0.80
+    }
+    """
+    try:
+        thresholds = request.get_json()
+        
+        alert_service = AlertService(outlet_id)
+        alert_service.configure_thresholds(thresholds)
+        
+        return jsonify({
+            'success': True,
+            'message': 'Thresholds updated'
+        }), 200
         
     except Exception as e:
         return jsonify({'error': str(e)}), 500

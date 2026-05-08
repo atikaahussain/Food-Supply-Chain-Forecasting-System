@@ -52,7 +52,7 @@ class ItemLevelForecaster:
     def use_category_average(self, food_item_id, days_ahead=7):
         """Use category average for new items with no history"""
         # Get item's category
-        food_item = db.session.query(FoodItem).get(food_item_id)
+        food_item = db.session.get(FoodItem, food_item_id)
         
         if not food_item:
             return [0] * days_ahead

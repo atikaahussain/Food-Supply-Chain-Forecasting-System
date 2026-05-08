@@ -4,9 +4,11 @@ from datetime import datetime
 from backend.database.models import db, Outlet
 from backend.services.forecasting_engine import ForecastEngine
 from backend.services.item_forecaster import ItemLevelForecaster
-import smtplib
-from email.mime.text import MIMEText
+from backend.services.alert_service import AlertService
 from email.mime.multipart import MIMEMultipart
+from backend.services.report_generator import ReportGenerator
+from backend.services.email_service import EmailService
+import os
 
 class ForecastScheduler:
     """Automated scheduling for daily forecasts"""
@@ -54,88 +56,56 @@ class ForecastScheduler:
                         forecast_id=result['forecast_id']
                     )
                     
-                    # Send email notification
-                    self.send_forecast_email(outlet, result, item_results)
+                    # Generate alerts
+                    alert_service = AlertService(outlet.id)
+                    alerts_created = alert_service.generate_all_alerts(
+                        forecast_id=result['forecast_id']
+                    )
+                    
+                    active_alerts = alert_service.get_active_alerts()
+                    
+                    # Generate Report
+                    report_gen = ReportGenerator(outlet.name)
+                    timestamp = datetime.now().strftime('%Y%m%d')
+                    report_path = f"data/reports/daily_{outlet.id}_{timestamp}.pdf"
+                    os.makedirs(os.path.dirname(report_path), exist_ok=True)
+                    
+                    # Prepare item forecasts for report
+                    report_items = {}
+                    for item_name, data in item_results.items():
+                        report_items[item_name] = {
+                            'next_day': data['next_day'],
+                            'next_week': [data['next_day']] * 7
+                        }
+                    
+                    report_gen.generate_forecast_report(result, report_items, report_path)
+                    
+                    # Send forecast notification with attachment
+                    email_service = EmailService()
+                    manager_email = os.getenv('MANAGER_EMAIL', 'manager@restaurant.com')
+                    
+                    email_service.send_forecast_notification(
+                        manager_email,
+                        result,
+                        outlet.name,
+                        attachment_path=report_path
+                    )
+                    
+                    # Send alert email if high priority alerts exist
+                    high_alerts = [a for a in active_alerts if a.get('severity') == 'high']
+                    if high_alerts:
+                        email_service.send_alert_notification(
+                            manager_email,
+                            high_alerts,
+                            outlet.name
+                        )
                     
                     print(f"✅ Completed forecast for {outlet.name}\n")
                     
                 except Exception as e:
                     print(f"❌ Error processing {outlet.name}: {str(e)}\n")
     
-    def send_forecast_email(self, outlet, forecast_result, item_results):
-        """Send email notification with forecast"""
-        # Email configuration (update with your SMTP settings)
-        SMTP_SERVER = 'smtp.gmail.com'
-        SMTP_PORT = 587
-        SENDER_EMAIL = 'your-email@gmail.com'
-        SENDER_PASSWORD = 'your-app-password'
-        RECIPIENT_EMAIL = 'manager@restaurant.com'
-        
-        # Create email
-        msg = MIMEMultipart('alternative')
-        msg['Subject'] = f"Daily Forecast - {outlet.name} - {datetime.now().date()}"
-        msg['From'] = SENDER_EMAIL
-        msg['To'] = RECIPIENT_EMAIL
-        
-        # Email body
-        html = f"""
-        <html>
-          <body>
-            <h2>📊 Daily Forecast for {outlet.name}</h2>
-            <p><strong>Generated:</strong> {datetime.now().strftime('%Y-%m-%d %H:%M')}</p>
-            
-            <h3>Tomorrow's Prediction</h3>
-            <p><strong>Expected Customers:</strong> {forecast_result['next_day_prediction']}</p>
-            <p><strong>Confidence Level:</strong> {forecast_result['confidence_level']*100}%</p>
-            <p><strong>Model Used:</strong> {forecast_result['model_used'].upper()}</p>
-            
-            <h3>Next Week Outlook</h3>
-            <table border="1" cellpadding="5">
-              <tr>
-                <th>Date</th>
-                <th>Predicted Customers</th>
-              </tr>
-        """
-        
-        for date, customers in zip(forecast_result.get('forecast_dates', []), 
-                                     forecast_result.get('next_week_predictions', [])):
-            html += f"<tr><td>{date}</td><td>{customers}</td></tr>"
-        
-        html += """
-            </table>
-            
-            <h3>Top Items to Prepare</h3>
-            <ul>
-        """
-        
-        # Add top 5 items
-        sorted_items = sorted(item_results.items(), 
-                            key=lambda x: x[1]['next_day'], 
-                            reverse=True)[:5]
-        
-        for item_name, predictions in sorted_items:
-            html += f"<li><strong>{item_name}:</strong> {predictions['next_day']} units</li>"
-        
-        html += """
-            </ul>
-            
-            <p>Access the full dashboard for detailed insights.</p>
-          </body>
-        </html>
-        """
-        
-        part = MIMEText(html, 'html')
-        msg.attach(part)
-        
-        # Send email
-        try:
-            with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
-                server.starttls()
-                server.login(SENDER_EMAIL, SENDER_PASSWORD)
-                server.send_message(msg)
-            print(f"📧 Email sent to {RECIPIENT_EMAIL}")
-        except Exception as e:
-            print(f"⚠️  Failed to send email: {str(e)}")
+
     
     def stop(self):
         """Stop the scheduler"""
