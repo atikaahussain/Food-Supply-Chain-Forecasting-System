@@ -4,6 +4,10 @@ venv/
 venvs/
 .venv/
 env/
+# dependencies
+node_modules/
+/.pnp
+.pnp.js
 
 # --- Python & Cache ---
 # Ignore compiled files and Jupyter checkpoints
@@ -15,6 +19,8 @@ __pycache__/
 .ipynb_checkpoints/
 # This covers pycache inside subfolders too
 **/__pycache__/
+# testing
+coverage/
 
 # --- Large Data Files ---
 # Ignore the raw Kaggle datasets (they are too big for GitHub)
@@ -23,16 +29,29 @@ data/raw/*.csv
 data/processed/*.csv
 # Ignore any AI models you save later (.pkl, .h5, .pt)
 data/models/
+# production
+build/
+dist/
 
 # --- Environment Secrets ---
 # VERY IMPORTANT: This keeps your Neon DB password/URL safe
 .env
 .flaskenv
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
 
 # --- OS & IDE Files ---
 # Ignore VS Code and system-specific files
-.vscode/
+# logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# IDE and editor files
 .idea/
+.vscode/
 .DS_Store
 *.swp
 Thumbs.db
@@ -40,4 +59,7 @@ Thumbs.db
 # --- Logs ---
 *.log
 
-*.png
+# Custom ignored directories (e.g., downloaded reports & generated plots)
+data/plots/*.png
+data/reports/*
+!data/reports/.gitkeep

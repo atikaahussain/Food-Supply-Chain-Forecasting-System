@@ -7,41 +7,78 @@ import {
   CartesianGrid,
   Tooltip,
   Legend,
-  ResponsiveContainer
+  ResponsiveContainer,
+  Area,
+  AreaChart
 } from 'recharts';
-import { Paper, Typography, Box } from '@mui/material';
+import { Paper, Typography, Box, useTheme } from '@mui/material';
 
 const ForecastChart = ({ data, title }) => {
+  const theme = useTheme();
+
   return (
-    <Paper sx={{ p: 3 }}>
-      <Typography variant="h6" gutterBottom>
+    <Paper sx={{ p: 4, borderRadius: 4 }}>
+      <Typography variant="h6" sx={{ mb: 3, fontWeight: 700, letterSpacing: '-0.5px' }}>
         {title}
       </Typography>
-      
-      <ResponsiveContainer width="100%" height={300}>
-        <LineChart data={data}>
-          <CartesianGrid strokeDasharray="3 3" />
-          <XAxis dataKey="date" />
-          <YAxis />
-          <Tooltip />
-          <Legend />
-          <Line
-            type="monotone"
-            dataKey="actual"
-            stroke="#8884d8"
-            name="Actual"
-            strokeWidth={2}
-          />
-          <Line
-            type="monotone"
-            dataKey="predicted"
-            stroke="#82ca9d"
-            name="Predicted"
-            strokeWidth={2}
-            strokeDasharray="5 5"
-          />
-        </LineChart>
-      </ResponsiveContainer>
+
+      <Box sx={{ width: '100%', height: 350 }}>
+        <ResponsiveContainer width="100%" height="100%">
+          <AreaChart data={data}>
+            <defs>
+              <linearGradient id="colorActual" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="5%" stopColor="#6366f1" stopOpacity={0.1} />
+                <stop offset="95%" stopColor="#6366f1" stopOpacity={0} />
+              </linearGradient>
+              <linearGradient id="colorPredicted" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="5%" stopColor="#ec4899" stopOpacity={0.1} />
+                <stop offset="95%" stopColor="#ec4899" stopOpacity={0} />
+              </linearGradient>
+            </defs>
+            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+            <XAxis
+              dataKey="date"
+              axisLine={false}
+              tickLine={false}
+              tick={{ fill: '#64748b', fontSize: 12 }}
+              dy={10}
+            />
+            <YAxis
+              axisLine={false}
+              tickLine={false}
+              tick={{ fill: '#64748b', fontSize: 12 }}
+            />
+            <Tooltip
+              contentStyle={{
+                borderRadius: '12px',
+                border: 'none',
+                boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)',
+                padding: '12px'
+              }}
+            />
+            <Legend verticalAlign="top" height={36} align="right" iconType="circle" />
+            <Area
+              type="monotone"
+              dataKey="actual"
+              stroke="#6366f1"
+              strokeWidth={3}
+              fillOpacity={1}
+              fill="url(#colorActual)"
+              name="Actual Sales"
+            />
+            <Area
+              type="monotone"
+              dataKey="predicted"
+              stroke="#ec4899"
+              strokeWidth={3}
+              strokeDasharray="5 5"
+              fillOpacity={1}
+              fill="url(#colorPredicted)"
+              name="AI Prediction"
+            />
+          </AreaChart>
+        </ResponsiveContainer>
+      </Box>
     </Paper>
   );
 };

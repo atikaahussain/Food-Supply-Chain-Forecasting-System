@@ -52,7 +52,12 @@ const MetricCard = ({ title, value, icon: Icon, color = '#6366f1', trend }) => {
         {title}
       </Typography>
 
-      <Typography variant="h4" sx={{ fontWeight: 800, color: '#1e293b', letterSpacing: '-1px' }}>
+      <Typography variant="h4" sx={{
+        fontWeight: 800,
+        color: '#1e293b',
+        letterSpacing: '-1px',
+        fontSize: { xs: '1.75rem', sm: '2.125rem' }
+      }}>
         {value}
       </Typography>
 

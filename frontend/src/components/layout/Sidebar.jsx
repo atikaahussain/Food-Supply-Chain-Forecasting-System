@@ -30,25 +30,12 @@ const menuItems = [
   { text: 'Reports', icon: <Assessment />, path: '/reports' }
 ];
 
-const Sidebar = () => {
+const Sidebar = ({ mobileOpen, onClose, drawerWidth }) => {
   const navigate = useNavigate();
   const location = useLocation();
 
-  return (
-    <Drawer
-      variant="permanent"
-      sx={{
-        width: DRAWER_WIDTH,
-        flexShrink: 0,
-        '& .MuiDrawer-paper': {
-          width: DRAWER_WIDTH,
-          boxSizing: 'border-box',
-          backgroundColor: '#0f172a', // Dark slate
-          color: '#94a3b8',
-          borderRight: 'none',
-        },
-      }}
-    >
+  const drawerContent = (
+    <>
       <Toolbar sx={{ px: 3, py: 4, display: 'flex', alignItems: 'center', gap: 1.5 }}>
         <Box sx={{
           p: 1,
@@ -75,7 +62,10 @@ const Sidebar = () => {
           return (
             <ListItem key={item.text} disablePadding sx={{ mb: 1 }}>
               <ListItemButton
-                onClick={() => navigate(item.path)}
+                onClick={() => {
+                  navigate(item.path);
+                  if (mobileOpen) onClose();
+                }}
                 selected={active}
                 sx={{
                   borderRadius: '12px',
@@ -138,7 +128,49 @@ const Sidebar = () => {
           </Box>
         </Box>
       </Box>
-    </Drawer>
+    </>
+  );
+
+  return (
+    <Box component="nav">
+      {/* Mobile drawer */}
+      <Drawer
+        variant="temporary"
+        open={mobileOpen}
+        onClose={onClose}
+        ModalProps={{ keepMounted: true }}
+        sx={{
+          display: { xs: 'block', md: 'none' },
+          '& .MuiDrawer-paper': {
+            width: drawerWidth,
+            boxSizing: 'border-box',
+            backgroundColor: '#0f172a',
+            color: '#94a3b8',
+            borderRight: 'none',
+          },
+        }}
+      >
+        {drawerContent}
+      </Drawer>
+
+      {/* Desktop drawer */}
+      <Drawer
+        variant="permanent"
+        sx={{
+          display: { xs: 'none', md: 'block' },
+          '& .MuiDrawer-paper': {
+            width: drawerWidth,
+            boxSizing: 'border-box',
+            backgroundColor: '#0f172a',
+            color: '#94a3b8',
+            borderRight: 'none',
+          },
+        }}
+        open
+      >
+        {drawerContent}
+      </Drawer>
+    </Box>
   );
 };
 

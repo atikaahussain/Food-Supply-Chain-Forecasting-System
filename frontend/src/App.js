@@ -74,6 +74,12 @@ const theme = createTheme({
 const DRAWER_WIDTH = 240;
 
 function App() {
+  const [mobileOpen, setMobileOpen] = React.useState(false);
+
+  const handleDrawerToggle = () => {
+    setMobileOpen(!mobileOpen);
+  };
+
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
@@ -87,18 +93,25 @@ function App() {
               element={
                 <ProtectedRoute>
                   <Box sx={{ display: 'flex' }}>
-                    <Navbar />
-                    <Sidebar />
+                    <Navbar onMenuClick={handleDrawerToggle} />
+                    <Sidebar
+                      mobileOpen={mobileOpen}
+                      onClose={handleDrawerToggle}
+                      drawerWidth={DRAWER_WIDTH}
+                    />
                     <Box
                       component="main"
                       sx={{
                         flexGrow: 1,
-                        p: 3,
-                        width: { sm: `calc(100% - ${DRAWER_WIDTH}px)` },
-                        ml: { sm: `${DRAWER_WIDTH}px` }
+                        p: { xs: 2, sm: 3 },
+                        width: { md: `calc(100% - ${DRAWER_WIDTH}px)` },
+                        ml: { md: `${DRAWER_WIDTH}px` },
+                        transition: 'margin 0.3s ease-in-out',
+                        minHeight: '100vh',
+                        backgroundColor: '#f8fafc'
                       }}
                     >
-                      <Toolbar />
+                      <Toolbar sx={{ mb: 1 }} />
                       <Routes>
                         <Route path="/dashboard" element={<Dashboard />} />
                         <Route path="/upload" element={<DataUpload />} />

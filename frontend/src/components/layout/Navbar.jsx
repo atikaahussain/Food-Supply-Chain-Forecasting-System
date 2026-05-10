@@ -15,10 +15,11 @@ import {
 import {
   AccountCircle,
   Logout,
-  Notifications
+  Notifications,
+  Menu as MenuIcon
 } from '@mui/icons-material';
 
-const Navbar = () => {
+const Navbar = ({ onMenuClick }) => {
   const [anchorEl, setAnchorEl] = React.useState(null);
   const { user, logout } = useAuth();
   const navigate = useNavigate();
@@ -48,7 +49,19 @@ const Navbar = () => {
         borderBottom: '1px solid #f1f5f9',
       }}
     >
-      <Toolbar sx={{ justifyContent: 'flex-end', minHeight: '70px !important' }}>
+      <Toolbar sx={{ justifyContent: 'space-between', minHeight: '70px !important' }}>
+        <IconButton
+          color="inherit"
+          aria-label="open drawer"
+          edge="start"
+          onClick={onMenuClick}
+          sx={{ mr: 2, display: { md: 'none' } }}
+        >
+          <MenuIcon />
+        </IconButton>
+
+        <Box sx={{ flexGrow: 1, display: { xs: 'none', md: 'block' } }} />
+
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
           <Tooltip title="Notifications">
             <IconButton size="medium" sx={{ color: '#64748b' }}>
