@@ -29,9 +29,10 @@ data/raw/*.csv
 data/processed/*.csv
 # Ignore any AI models you save later (.pkl, .h5, .pt)
 data/models/
+data/reports/
 # production
-build/
-dist/
+frontend/build/
+frontend/dist/
 
 # --- Environment Secrets ---
 # VERY IMPORTANT: This keeps your Neon DB password/URL safe
@@ -60,6 +61,5 @@ Thumbs.db
 *.log
 
 # Custom ignored directories (e.g., downloaded reports & generated plots)
-data/plots/*.png
-data/reports/*
-!data/reports/.gitkeep
+scratch/
+verify_neon.py
