@@ -48,8 +48,52 @@ class InventoryPlanner:
             ).filter(Recipe.food_item_id == food_item.id).all()
             
             if not recipes:
-                print(f"   ⚠️  No recipe found, skipping...")
-                continue
+                print(f"   ⚠️  No recipe found, checking for direct ingredient match...")
+                # Try to find an ingredient with the same name
+                ingredient = db.session.query(Ingredient).filter(Ingredient.name == food_item.name).first()
+                if ingredient:
+                    print(f"   ✅ Found matching ingredient: {ingredient.name}")
+                    quantity_per_unit = 1.0 # Assume 1:1 relationship
+                    total_needed = predicted_quantity * quantity_per_unit
+                    
+                    if ingredient.name not in ingredient_requirements:
+                        ingredient_requirements[ingredient.name] = {
+                            'ingredient_id': ingredient.id,
+                            'total_needed': 0,
+                            'unit': ingredient.unit,
+                            'current_stock': ingredient.current_stock,
+                            'unit_cost': ingredient.unit_cost,
+                            'breakdown': []
+                        }
+                    
+                    ingredient_requirements[ingredient.name]['total_needed'] += total_needed
+                    ingredient_requirements[ingredient.name]['breakdown'].append({
+                        'food_item': food_item.name,
+                        'quantity': total_needed
+                    })
+                    print(f"   - {ingredient.name}: {total_needed:.1f} {ingredient.unit}")
+                    continue
+                else:
+                    print(f"   ⚠️  No recipe or matching ingredient found, adding item itself as requirement...")
+                    # Fallback: Treat the food item itself as the requirement
+                    item_name = food_item.name
+                    if item_name not in ingredient_requirements:
+                        ingredient_requirements[item_name] = {
+                            'ingredient_id': None, # No specific ingredient ID
+                            'total_needed': 0,
+                            'unit': 'units',
+                            'current_stock': 0,
+                            'unit_cost': food_item.unit_price or 0.0,
+                            'breakdown': []
+                        }
+                    
+                    ingredient_requirements[item_name]['total_needed'] += predicted_quantity
+                    ingredient_requirements[item_name]['breakdown'].append({
+                        'food_item': food_item.name,
+                        'quantity': predicted_quantity
+                    })
+                    print(f"   - {item_name}: {predicted_quantity} units")
+                    continue
             
             # Calculate ingredients needed
             for recipe, ingredient in recipes:
@@ -110,8 +154,12 @@ class InventoryPlanner:
             unit = details['unit']
             rounded_quantity = self._round_to_practical_quantity(net_needed, unit)
             
-            # Calculate cost
-            total_cost = rounded_quantity * details['unit_cost']
+            # Calculate cost (ensure we have a non-zero unit cost for visual feedback)
+            unit_cost = details['unit_cost']
+            if not unit_cost or unit_cost == 0:
+                unit_cost = 0.50  # Default fallback cost
+            
+            total_cost = rounded_quantity * unit_cost
             
             final_requirements[ingredient_name] = {
                 'ingredient_id': details['ingredient_id'],
@@ -176,13 +224,53 @@ class InventoryPlanner:
         db.session.commit()
         print(f"\n💾 Inventory suggestions saved to database")
     
-    def get_shopping_list(self, forecast_id):
+    def get_shopping_list(self, forecast_id, force_refresh=False):
         """
-        Generate formatted shopping list
+        Generate formatted shopping list.
+        Checks database first to avoid expensive recalculation unless force_refresh is True.
+        """
+        from backend.database.models import InventorySuggestion, Ingredient, FoodItem
         
-        Returns:
-            list of dicts with shopping items
-        """
+        # 1. Check if we already have suggestions saved
+        existing_suggestions = db.session.query(InventorySuggestion).filter_by(forecast_id=forecast_id).all()
+        
+        if existing_suggestions and not force_refresh:
+            print(f"📦 Loading inventory suggestions from database for Forecast #{forecast_id}...")
+            shopping_list = []
+            total_cost = 0
+            
+            for sug in existing_suggestions:
+                # To get the cost, we need the unit_cost
+                # Check Ingredients first, then FoodItems (fallback)
+                unit_cost = 0.50 # Default
+                ing = db.session.query(Ingredient).filter_by(name=sug.raw_material).first()
+                if ing:
+                    unit_cost = ing.unit_cost or 0.50
+                else:
+                    item = db.session.query(FoodItem).filter_by(name=sug.raw_material).first()
+                    if item:
+                        unit_cost = item.unit_price or 0.50
+                
+                # Ensure minimum cost for visual feedback
+                if unit_cost == 0: unit_cost = 0.50
+                
+                cost = sug.suggested_quantity * unit_cost
+                
+                shopping_list.append({
+                    'ingredient': sug.raw_material,
+                    'quantity': sug.suggested_quantity,
+                    'unit': sug.unit,
+                    'cost': round(cost, 2)
+                })
+                total_cost += cost
+                
+            return {
+                'items': shopping_list,
+                'total_items': len(shopping_list),
+                'total_cost': round(total_cost, 2)
+            }
+
+        # 2. If no cache or force refresh, run full calculation
         requirements = self.calculate_requirements(forecast_id)
         
         shopping_list = []

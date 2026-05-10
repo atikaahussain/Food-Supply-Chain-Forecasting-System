@@ -45,17 +45,20 @@ def generate_forecast_report(forecast_id):
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
         file_format = request.args.get('format', 'pdf').lower()
         
+        # Ensure absolute path for data/reports
+        base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        reports_dir = os.path.join(base_dir, 'data', 'reports')
+        os.makedirs(reports_dir, exist_ok=True)
+        
         if file_format == 'excel':
             filename = f"forecast_report_{forecast_id}_{timestamp}.xlsx"
             mimetype = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-            output_path = os.path.join('data', 'reports', filename)
-            os.makedirs(os.path.dirname(output_path), exist_ok=True)
+            output_path = os.path.join(reports_dir, filename)
             report_path = generator.generate_excel_report(forecast_data, item_forecasts, output_path)
         else:
             filename = f"forecast_report_{forecast_id}_{timestamp}.pdf"
             mimetype = 'application/pdf'
-            output_path = os.path.join('data', 'reports', filename)
-            os.makedirs(os.path.dirname(output_path), exist_ok=True)
+            output_path = os.path.join(reports_dir, filename)
             report_path = generator.generate_forecast_report(forecast_data, item_forecasts, output_path)
         
         email = request.args.get('email')
@@ -64,13 +67,14 @@ def generate_forecast_report(forecast_id):
             email_service.send_forecast_notification(email, forecast_data, "Restaurant Outlet", report_path)
         
         return send_file(
-            report_path,
+            os.path.abspath(report_path),
             as_attachment=True,
             download_name=filename,
             mimetype=mimetype
         )
         
     except Exception as e:
+        print(f"❌ Error in generate_forecast_report: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
 
@@ -99,8 +103,13 @@ def generate_inventory_report(forecast_id):
         generator = ReportGenerator("Restaurant Outlet")
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
         filename = f"inventory_report_{forecast_id}_{timestamp}.pdf"
-        output_path = os.path.join('data', 'reports', filename)
-        os.makedirs(os.path.dirname(output_path), exist_ok=True)
+        
+        # Ensure absolute path for data/reports
+        base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        reports_dir = os.path.join(base_dir, 'data', 'reports')
+        os.makedirs(reports_dir, exist_ok=True)
+        
+        output_path = os.path.join(reports_dir, filename)
         
         report_path = generator.generate_inventory_report(
             inventory_data,
@@ -108,7 +117,7 @@ def generate_inventory_report(forecast_id):
         )
         
         return send_file(
-            report_path,
+            os.path.abspath(report_path),
             as_attachment=True,
             download_name=filename,
             mimetype='application/pdf'

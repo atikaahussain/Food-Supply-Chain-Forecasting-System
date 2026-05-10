@@ -54,11 +54,11 @@ const AlertsPanel = ({ outletId }) => {
     try {
       const forecastRes = await api.get('/forecast/latest/1');
       const forecastId = forecastRes.data.forecast_id;
-      
+
       await api.post(`/inventory/alerts/generate/${outletId}`, {
         forecast_id: forecastId
       });
-      
+
       fetchAlerts();
     } catch (error) {
       console.error('Error generating alerts:', error);
@@ -111,7 +111,7 @@ const AlertsPanel = ({ outletId }) => {
 
       {alerts.length === 0 ? (
         <MuiAlert severity="success" icon={<CheckCircle />}>
-          No active alerts. Everything looks good! ✨
+          No active alerts. Everything looks good!
         </MuiAlert>
       ) : (
         <List>

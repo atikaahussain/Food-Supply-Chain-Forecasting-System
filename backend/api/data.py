@@ -101,7 +101,17 @@ def upload_data():
             # Original format (center_id, meal_id, week, num_orders, checkout_price)
             print("📁 Detected original dataset format")
             
-            # --- TURBO STEP 1: PRE-CACHE OUTLETS AND MEALS ---
+            # Load meal info for better naming if available
+            meal_names = {}
+            meal_info_path = os.path.join(BASE_DIR, 'data', 'raw', 'meal_info.csv')
+            if os.path.exists(meal_info_path):
+                try:
+                    meal_info_df = pd.read_csv(meal_info_path)
+                    for _, m_row in meal_info_df.iterrows():
+                        meal_names[int(m_row['meal_id'])] = f"{m_row['cuisine']} {m_row['category']}"
+                except Exception as e:
+                    print(f"⚠️ Could not load meal_info.csv: {e}")
+
             unique_centers = df['center_id'].unique()
             unique_meals = df['meal_id'].unique()
 
@@ -111,7 +121,8 @@ def upload_data():
             
             for m_id in unique_meals:
                 if not FoodItem.query.get(int(m_id)):
-                    db.session.add(FoodItem(id=int(m_id), name=f"Meal {m_id}", category="General"))
+                    name = meal_names.get(int(m_id), f"Meal {m_id}")
+                    db.session.add(FoodItem(id=int(m_id), name=name, category="General"))
             
             db.session.commit()
             print("✅ Pre-caching complete. Starting bulk sales upload...")
@@ -132,6 +143,12 @@ def upload_data():
                     "quantity_sold": int(row['num_orders']),
                     "revenue": float(row['checkout_price']) * int(row['num_orders'])
                 }
+                
+                # Update FoodItem unit price if not set or if we want latest
+                food_item = FoodItem.query.get(int(row['meal_id']))
+                if food_item and (not food_item.unit_price or food_item.unit_price == 0):
+                    food_item.unit_price = float(row['checkout_price'])
+                
                 sales_buffer.append(sale_entry)
                 records_added += 1
 
@@ -162,15 +179,6 @@ def upload_data():
 def get_data_stats():
     """
     Return high-level database statistics for the dashboard.
-
-    GET /api/data/stats
-    Response: {
-        "total_records": 12345,
-        "total_food_items": 8,
-        "total_outlets": 3,
-        "date_range": {"min": "2023-01-01", "max": "2024-12-31"},
-        "has_data": true
-    }
     """
     try:
         from sqlalchemy import func
@@ -200,4 +208,62 @@ def get_data_stats():
 
     except Exception as e:
         print(f"❌ Stats error: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+
+@data_bp.route('/fix-names', methods=['POST'])
+def fix_meal_names():
+    """
+    Utility route to fix existing 'Meal XXXX' names in the database
+    using meal_info.csv mapping.
+    """
+    try:
+        meal_names = {}
+        meal_info_path = os.path.join(BASE_DIR, 'data', 'raw', 'meal_info.csv')
+        if not os.path.exists(meal_info_path):
+            return jsonify({'error': 'meal_info.csv not found in data/raw/'}), 404
+            
+        meal_info_df = pd.read_csv(meal_info_path)
+        for _, m_row in meal_info_df.iterrows():
+            meal_names[int(m_row['meal_id'])] = f"{m_row['cuisine']} {m_row['category']}"
+        
+        items_fixed = 0
+        all_items = FoodItem.query.all()
+        for item in all_items:
+            name_str = str(item.name)
+            if name_str.startswith('Meal ') or name_str.isdigit():
+                meal_id = None
+                if name_str.startswith('Meal '):
+                    try:
+                        meal_id = int(name_str.replace('Meal ', ''))
+                    except: pass
+                else:
+                    try:
+                        meal_id = int(item.id)
+                    except: pass
+                
+                if meal_id in meal_names:
+                    item.name = meal_names[meal_id]
+                    items_fixed += 1
+            
+            # Fix zero prices if possible
+            if not item.unit_price or item.unit_price == 0:
+                latest_sale = Sales.query.filter_by(food_item_id=item.id).order_by(Sales.date.desc()).first()
+                if latest_sale:
+                    # Calculate unit price from revenue and quantity
+                    if latest_sale.quantity_sold > 0:
+                        item.unit_price = latest_sale.revenue / latest_sale.quantity_sold
+                    elif latest_sale.revenue > 0:
+                        item.unit_price = latest_sale.revenue
+        
+        db.session.commit()
+        return jsonify({
+            'status': 'success',
+            'items_fixed': items_fixed,
+            'message': f'Successfully updated {items_fixed} meal names'
+        }), 200
+        
+    except Exception as e:
+        db.session.rollback()
+        print(f"❌ Fix names error: {str(e)}")
         return jsonify({'error': str(e)}), 500

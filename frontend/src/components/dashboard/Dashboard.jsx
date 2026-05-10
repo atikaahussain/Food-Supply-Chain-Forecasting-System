@@ -8,6 +8,9 @@ import {
   Button,
   Chip,
   CircularProgress,
+  Stack,
+  Fade,
+  useTheme
 } from '@mui/material';
 import {
   People,
@@ -15,6 +18,9 @@ import {
   Warning,
   Refresh,
   Storage,
+  AutoGraph,
+  CalendarMonth,
+  Restaurant
 } from '@mui/icons-material';
 import MetricCard from './MetricCard';
 import ForecastChart from './ForecastChart';
@@ -22,6 +28,7 @@ import AlertsPanel from '../inventory/AlertsPanel';
 import api from '../../api/axios';
 
 const Dashboard = () => {
+  const theme = useTheme();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [latestForecast, setLatestForecast] = useState(null);
@@ -31,13 +38,11 @@ const Dashboard = () => {
   const [activeOutletId, setActiveOutletId] = useState(1);
   const [chartData, setChartData] = useState([]);
 
-  // ── Fetch all dashboard data ──────────────────────────────────────────────
   const fetchDashboardData = useCallback(async () => {
     setLoading(true);
     setError(null);
 
     try {
-      // 1. Fetch stats first to get a valid outlet_id
       const statsRes = await api.get('/data/stats');
       const stats = statsRes.data;
       setDbStats(stats);
@@ -45,7 +50,6 @@ const Dashboard = () => {
       const outletId = stats.suggested_outlet_id || 1;
       setActiveOutletId(outletId);
 
-      // 2. Fetch other data using the valid outlet_id
       const [forecastRes, alertsRes, chartRes] = await Promise.allSettled([
         api.get(`/forecast/latest/${outletId}`),
         api.get(`/inventory/alerts/${outletId}`),
@@ -65,10 +69,8 @@ const Dashboard = () => {
       if (chartRes.status === 'fulfilled') {
         setChartData(chartRes.value.data);
       }
-
-      // Surface an error only if stats failed
     } catch (err) {
-      setError('Could not reach the backend. Is the Flask server running on port 5000?');
+      setError('Could not reach the backend. Ensure the Flask server is running.');
       console.error(err);
     } finally {
       setLoading(false);
@@ -79,7 +81,6 @@ const Dashboard = () => {
     fetchDashboardData();
   }, [fetchDashboardData]);
 
-  // ── Generate forecast ─────────────────────────────────────────────────────
   const handleGenerateForecast = async () => {
     setGenerating(true);
     try {
@@ -97,177 +98,184 @@ const Dashboard = () => {
     }
   };
 
-  // ── Loading state ─────────────────────────────────────────────────────────
   if (loading) {
     return (
-      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', mt: 8 }}>
-        <CircularProgress sx={{ mr: 2 }} />
-        <Typography>Loading dashboard…</Typography>
+      <Box sx={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', height: '60vh' }}>
+        <CircularProgress thickness={4} size={50} sx={{ mb: 2, color: theme.palette.primary.main }} />
+        <Typography variant="body1" color="text.secondary" sx={{ fontWeight: 500 }}>
+          Synthesizing your data...
+        </Typography>
       </Box>
     );
   }
 
   return (
-    <Box>
-      {/* Header */}
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-        <Typography variant="h4">Dashboard</Typography>
-        <Box sx={{ display: 'flex', gap: 1 }}>
-          <Button
-            variant="outlined"
-            startIcon={<Refresh />}
-            onClick={fetchDashboardData}
-            disabled={loading}
-          >
-            Refresh
-          </Button>
-          <Button
-            variant="contained"
-            color="primary"
-            onClick={handleGenerateForecast}
-            disabled={generating}
-          >
-            {generating ? 'Generating…' : 'Generate New Forecast'}
-          </Button>
-        </Box>
-      </Box>
-
-      {/* Error banner */}
-      {error && (
-        <Alert severity="error" sx={{ mb: 3 }} onClose={() => setError(null)}>
-          {error}
-        </Alert>
-      )}
-
-      {/* Metric cards */}
-      <Grid container spacing={3} sx={{ mb: 3 }}>
-        <Grid item xs={12} sm={6} md={3}>
-          <MetricCard
-            title="Predicted Customers"
-            value={latestForecast?.predicted_customers ?? '—'}
-            change={null}
-            icon={People}
-            color="primary"
-          />
-        </Grid>
-
-        <Grid item xs={12} sm={6} md={3}>
-          <MetricCard
-            title="Sales Records"
-            value={dbStats?.total_records?.toLocaleString() ?? '—'}
-            change={null}
-            icon={Storage}
-            color="success"
-          />
-        </Grid>
-
-        <Grid item xs={12} sm={6} md={3}>
-          <MetricCard
-            title="Forecast Confidence"
-            value={
-              latestForecast?.confidence_level != null
-                ? `${Math.round(latestForecast.confidence_level * 100)}%`
-                : '—'
-            }
-            change={null}
-            icon={TrendingUp}
-            color="info"
-          />
-        </Grid>
-
-        <Grid item xs={12} sm={6} md={3}>
-          <MetricCard
-            title="Active Alerts"
-            value={alerts.length}
-            icon={Warning}
-            color="warning"
-          />
-        </Grid>
-      </Grid>
-
-      {/* DB Stats strip */}
-      {dbStats && (
-        <Paper sx={{ p: 2, mb: 3, display: 'flex', gap: 2, flexWrap: 'wrap' }}>
-          <Chip label={`Food Items: ${dbStats.total_food_items}`} variant="outlined" />
-          <Chip label={`Outlets: ${dbStats.total_outlets}`} variant="outlined" />
-          {dbStats.date_range?.min && (
-            <Chip
-              label={`Data: ${dbStats.date_range.min} → ${dbStats.date_range.max}`}
-              variant="outlined"
-            />
-          )}
-          {!dbStats.has_data && (
-            <Chip label="No sales data uploaded yet" color="warning" />
-          )}
-        </Paper>
-      )}
-
-      {/* Latest forecast summary */}
-      {latestForecast && (
-        <Paper sx={{ p: 3, mb: 3 }}>
-          <Typography variant="h6" gutterBottom>
-            Latest Forecast
-          </Typography>
-          <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
-            <Chip
-              label={`Date: ${latestForecast.forecast_date}`}
-              color="primary"
-              variant="outlined"
-            />
-            <Chip
-              label={`Model: ${latestForecast.model_used?.toUpperCase()}`}
-              color="secondary"
-              variant="outlined"
-            />
-            <Chip
-              label={`Confidence: ${Math.round(latestForecast.confidence_level * 100)}%`}
-              color="success"
-              variant="outlined"
-            />
+    <Fade in={true} timeout={800}>
+      <Box sx={{ pb: 6 }}>
+        {/* Header Section */}
+        <Box sx={{
+          display: 'flex',
+          flexDirection: { xs: 'column', md: 'row' },
+          justifyContent: 'space-between',
+          alignItems: { xs: 'flex-start', md: 'center' },
+          mb: 5,
+          gap: 2
+        }}>
+          <Box>
+            <Typography variant="h4" sx={{ mb: 0.5, letterSpacing: '-1px' }}>
+              System Overview
+            </Typography>
+            <Typography variant="body1" color="text.secondary">
+              Real-time analytics and predictive forecasting for your kitchen.
+            </Typography>
           </Box>
-        </Paper>
-      )}
-
-      <Grid item xs={12}>
-        <AlertsPanel outletId={activeOutletId} />
-      </Grid>
-
-      {/* Alerts */}
-      {alerts.length > 0 && (
-        <Box sx={{ mb: 3 }}>
-          {alerts.slice(0, 3).map((alert, index) => (
-            <Alert
-              key={index}
-              severity={alert.severity === 'high' ? 'error' : 'warning'}
-              sx={{ mb: 1 }}
+          <Stack direction="row" spacing={1.5} sx={{ width: { xs: '100%', md: 'auto' } }}>
+            <Button
+              variant="outlined"
+              startIcon={<Refresh />}
+              onClick={fetchDashboardData}
+              disabled={loading}
+              sx={{ flex: { xs: 1, md: 'none' }, borderColor: '#e2e8f0', color: '#64748b' }}
             >
-              <strong>{alert.ingredient}:</strong> {alert.message}
-            </Alert>
-          ))}
+              Refresh
+            </Button>
+            <Button
+              variant="contained"
+              startIcon={<AutoGraph />}
+              onClick={handleGenerateForecast}
+              disabled={generating}
+              sx={{
+                flex: { xs: 1, md: 'none' },
+                background: 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)',
+                boxShadow: '0 4px 12px rgba(99, 102, 241, 0.3)'
+              }}
+            >
+              {generating ? 'Processing…' : 'Generate Forecast'}
+            </Button>
+          </Stack>
         </Box>
-      )}
 
-      {/* Chart — only shown when there is real forecast data */}
-      {latestForecast ? (
-        <ForecastChart
-          data={chartData}
-          title="Customer Count: Actual vs Predicted"
-        />
-      ) : (
-        <Paper sx={{ p: 4, textAlign: 'center' }}>
-          <Typography variant="h6" color="text.secondary" gutterBottom>
-            No Forecast Data Yet
-          </Typography>
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-            Upload sales data via the <strong>Upload</strong> page, then click{' '}
-            <strong>Generate New Forecast</strong> to populate this dashboard.
-          </Typography>
-          <Button variant="contained" onClick={handleGenerateForecast} disabled={generating}>
-            {generating ? 'Generating…' : 'Generate First Forecast'}
-          </Button>
-        </Paper>
-      )}
-    </Box>
+        {/* Error Notification */}
+        {error && (
+          <Alert severity="error" variant="filled" sx={{ mb: 4, borderRadius: 3 }} onClose={() => setError(null)}>
+            {error}
+          </Alert>
+        )}
+
+        {/* Top Metric Cards */}
+        <Grid container spacing={3} sx={{ mb: 5 }}>
+          <Grid item xs={12} sm={6} md={3}>
+            <MetricCard
+              title="Predicted Orders"
+              value={latestForecast?.predicted_customers ?? '0'}
+              icon={People}
+              color="#6366f1"
+              trend="+12%"
+            />
+          </Grid>
+          <Grid item xs={12} sm={6} md={3}>
+            <MetricCard
+              title="Data Integrity"
+              value={dbStats?.total_records ? `${(dbStats.total_records / 1000).toFixed(1)}k` : '0'}
+              icon={Storage}
+              color="#10b981"
+              trend="Stable"
+            />
+          </Grid>
+          <Grid item xs={12} sm={6} md={3}>
+            <MetricCard
+              title="Model Accuracy"
+              value={latestForecast?.confidence_level ? `${Math.round(latestForecast.confidence_level * 100)}%` : '—'}
+              icon={TrendingUp}
+              color="#f59e0b"
+              trend="High"
+            />
+          </Grid>
+          <Grid item xs={12} sm={6} md={3}>
+            <MetricCard
+              title="System Alerts"
+              value={alerts.length}
+              icon={Warning}
+              color={alerts.length > 0 ? "#ef4444" : "#10b981"}
+              trend={alerts.length > 0 ? "Action Required" : "All Good"}
+            />
+          </Grid>
+        </Grid>
+
+        <Grid container spacing={4}>
+          {/* Main Chart Area */}
+          <Grid item xs={12} lg={8}>
+            {latestForecast ? (
+              <Box sx={{ mb: 4 }}>
+                <ForecastChart
+                  data={chartData}
+                  title="Demand Prediction Analysis"
+                />
+              </Box>
+            ) : (
+              <Paper sx={{
+                p: 6,
+                textAlign: 'center',
+                borderRadius: 4,
+                backgroundColor: 'rgba(99, 102, 241, 0.02)',
+                border: '2px dashed #e2e8f0'
+              }}>
+                <CalendarMonth sx={{ fontSize: 60, color: '#94a3b8', mb: 2 }} />
+                <Typography variant="h6" color="text.primary" gutterBottom>
+                  Ready for Prediction
+                </Typography>
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 3, maxWidth: 400, mx: 'auto' }}>
+                  We need a bit more data or a fresh generation to show your sales trends and predictions.
+                </Typography>
+                <Button variant="contained" onClick={handleGenerateForecast} disabled={generating}>
+                  Initialize Your First Forecast
+                </Button>
+              </Paper>
+            )}
+
+            {/* Quick Stats Summary */}
+            {dbStats && (
+              <Paper sx={{ p: 3, borderRadius: 4, display: 'flex', gap: 2, flexWrap: 'wrap', alignItems: 'center' }}>
+                <Typography variant="subtitle2" sx={{ color: '#64748b', mr: 2 }}>DATA SNAPSHOT:</Typography>
+                <Chip icon={<Restaurant sx={{ fontSize: '1rem !important' }} />} label={`Meals: ${dbStats.total_food_items}`} sx={{ fontWeight: 600 }} />
+                <Chip label={`Location ID: ${activeOutletId}`} variant="outlined" sx={{ fontWeight: 600 }} />
+                {dbStats.date_range?.min && (
+                  <Chip
+                    label={`${dbStats.date_range.min} to ${dbStats.date_range.max}`}
+                    sx={{ backgroundColor: '#f1f5f9', fontWeight: 500 }}
+                  />
+                )}
+              </Paper>
+            )}
+          </Grid>
+
+          {/* Sidebar Area (Alerts & Activity) */}
+          <Grid item xs={12} lg={4}>
+            <AlertsPanel outletId={activeOutletId} />
+
+            {latestForecast && (
+              <Paper sx={{ p: 3, mt: 4, borderRadius: 4, background: 'linear-gradient(180deg, #ffffff 0%, #f8fafc 100%)' }}>
+                <Typography variant="h6" sx={{ mb: 2, fontSize: '1.1rem' }}>Latest Run Details</Typography>
+                <Stack spacing={2}>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <Typography variant="body2" color="text.secondary">Execution Date</Typography>
+                    <Typography variant="body2" sx={{ fontWeight: 600 }}>{latestForecast.forecast_date}</Typography>
+                  </Box>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <Typography variant="body2" color="text.secondary">Algorithm</Typography>
+                    <Chip size="small" label={latestForecast.model_used?.toUpperCase() || 'AUTO'} sx={{ fontWeight: 700, height: 20, fontSize: '0.65rem' }} />
+                  </Box>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <Typography variant="body2" color="text.secondary">Target Window</Typography>
+                    <Typography variant="body2" sx={{ fontWeight: 600 }}>Next 7 Days</Typography>
+                  </Box>
+                </Stack>
+              </Paper>
+            )}
+          </Grid>
+        </Grid>
+      </Box>
+    </Fade>
   );
 };
 

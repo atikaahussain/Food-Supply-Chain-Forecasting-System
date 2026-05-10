@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import {
-  Container,
   Box,
   TextField,
   Button,
@@ -10,7 +9,10 @@ import {
   Paper,
   Alert,
   Divider,
-  Chip
+  Chip,
+  Fade,
+  Stack,
+  alpha
 } from '@mui/material';
 import RestaurantIcon from '@mui/icons-material/Restaurant';
 import api from '../../api/axios';
@@ -30,31 +32,20 @@ const Login = () => {
     setLoading(true);
 
     try {
-      // ── 1. Try real backend API ──────────────────────────────────────────
       const response = await api.post('/auth/login', { username, password });
       const { token, user } = response.data;
       login(user, token);
       navigate('/dashboard');
     } catch (err) {
       if (err.code === 'ERR_NETWORK' || err.code === 'ECONNREFUSED') {
-        // ── 2. Backend unreachable → dev-mode fallback ───────────────────
         if (username === 'admin' && password === 'admin123') {
-          const userData = {
-            id: 0,
-            username: 'admin',
-            role: 'admin',
-            email: 'admin@restaurant.com',
-          };
-          login(userData, 'dev-offline-token');
+          login({ id: 0, username: 'admin', role: 'admin' }, 'dev-token');
           navigate('/dashboard');
         } else {
-          setError('Backend is offline. Use admin / admin123 for demo access.');
+          setError('Backend offline. Use admin / admin123 for demo.');
         }
       } else {
-        // ── 3. Backend responded with an error (wrong credentials, etc.) ──
-        setError(
-          err.response?.data?.error || 'Login failed. Please check your credentials.'
-        );
+        setError(err.response?.data?.error || 'Authentication failed.');
       }
     } finally {
       setLoading(false);
@@ -62,87 +53,121 @@ const Login = () => {
   };
 
   return (
-    <Container maxWidth="sm">
-      <Box
-        sx={{
-          marginTop: 8,
+    <Box sx={{
+      height: '100vh',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      background: 'linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%)'
+    }}>
+      <Fade in={true} timeout={1000}>
+        <Paper sx={{
           display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-        }}
-      >
-        <Paper elevation={3} sx={{ padding: 4, width: '100%' }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', mb: 3 }}>
-            <RestaurantIcon sx={{ fontSize: 40, color: 'primary.main', mr: 1 }} />
-            <Typography variant="h4" component="h1">
-              Food Forecast
-            </Typography>
+          width: { xs: '90%', sm: '450px', md: '900px' },
+          height: { md: '600px' },
+          borderRadius: 6,
+          overflow: 'hidden',
+          boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.15)'
+        }}>
+          {/* Left Side - Brand (Hidden on mobile) */}
+          <Box sx={{
+            display: { xs: 'none', md: 'flex' },
+            flex: 1,
+            background: 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)',
+            color: 'white',
+            flexDirection: 'column',
+            justifyContent: 'center',
+            p: 6,
+            position: 'relative'
+          }}>
+            <Stack spacing={2} sx={{ zIndex: 1 }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
+                <Box sx={{ p: 1, bgcolor: 'white', borderRadius: 2 }}>
+                  <RestaurantIcon sx={{ color: '#6366f1' }} />
+                </Box>
+                <Typography variant="h4" sx={{ fontWeight: 800, letterSpacing: '-1px' }}>ForeCastPro</Typography>
+              </Box>
+              <Typography variant="h5" sx={{ fontWeight: 600 }}>Precision Food Supply Management</Typography>
+              <Typography variant="body1" sx={{ opacity: 0.8, lineHeight: 1.6 }}>
+                Harnessing AI to predict demand, optimize inventory, and eliminate food waste across your network.
+              </Typography>
+            </Stack>
+
+            <Box sx={{
+              position: 'absolute',
+              bottom: -50,
+              right: -50,
+              width: 300,
+              height: 300,
+              borderRadius: '50%',
+              background: 'rgba(255,255,255,0.1)',
+              backdropFilter: 'blur(10px)'
+            }} />
           </Box>
 
-          <Typography variant="h6" align="center" gutterBottom>
-            Sign In
-          </Typography>
-
-          {error && (
-            <Alert severity="error" sx={{ mb: 2 }}>
-              {error}
-            </Alert>
-          )}
-
-          <form onSubmit={handleSubmit}>
-            <TextField
-              margin="normal"
-              required
-              fullWidth
-              id="username"
-              label="Username"
-              autoComplete="username"
-              autoFocus
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-            />
-
-            <TextField
-              margin="normal"
-              required
-              fullWidth
-              id="password"
-              label="Password"
-              type="password"
-              autoComplete="current-password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-            />
-
-            <Button
-              type="submit"
-              fullWidth
-              variant="contained"
-              sx={{ mt: 3, mb: 2 }}
-              disabled={loading}
-            >
-              {loading ? 'Signing in…' : 'Sign In'}
-            </Button>
-
-            <Divider sx={{ my: 2 }}>
-              <Chip label="Demo" size="small" />
-            </Divider>
-
-            <Box sx={{ p: 2, bgcolor: 'grey.100', borderRadius: 1 }}>
-              <Typography variant="caption" display="block" gutterBottom>
-                <strong>Demo Credentials:</strong>
-              </Typography>
-              <Typography variant="caption" display="block">
-                Username: <strong>admin</strong>
-              </Typography>
-              <Typography variant="caption" display="block">
-                Password: <strong>admin123</strong>
-              </Typography>
+          {/* Right Side - Form */}
+          <Box sx={{ flex: 1, p: { xs: 4, md: 8 }, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+            <Box sx={{ mb: 4 }}>
+              <Typography variant="h5" sx={{ fontWeight: 700, mb: 1 }}>Welcome Back</Typography>
+              <Typography variant="body2" color="text.secondary">Enter your credentials to access the intelligence suite.</Typography>
             </Box>
-          </form>
+
+            {error && <Alert severity="error" sx={{ mb: 3, borderRadius: 3 }}>{error}</Alert>}
+
+            <form onSubmit={handleSubmit}>
+              <Stack spacing={3}>
+                <TextField
+                  label="Username"
+                  fullWidth
+                  required
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  sx={{ '& .MuiOutlinedInput-root': { borderRadius: 3 } }}
+                />
+                <TextField
+                  label="Password"
+                  type="password"
+                  fullWidth
+                  required
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  sx={{ '& .MuiOutlinedInput-root': { borderRadius: 3 } }}
+                />
+                <Button
+                  type="submit"
+                  variant="contained"
+                  fullWidth
+                  disabled={loading}
+                  sx={{
+                    py: 1.5,
+                    borderRadius: 3,
+                    fontWeight: 700,
+                    fontSize: '1rem',
+                    boxShadow: '0 10px 15px -3px rgba(99, 102, 241, 0.3)'
+                  }}
+                >
+                  {loading ? 'Authenticating...' : 'Sign In'}
+                </Button>
+              </Stack>
+
+              <Divider sx={{ my: 4 }}>
+                <Chip label="Demo Access" size="small" variant="outlined" />
+              </Divider>
+
+              <Box sx={{ p: 2.5, bgcolor: alpha('#6366f1', 0.05), borderRadius: 4, border: '1px dashed', borderColor: alpha('#6366f1', 0.2) }}>
+                <Stack direction="row" spacing={2} sx={{ mb: 1, alignItems: 'center' }}>
+                  <Typography variant="caption" sx={{ fontWeight: 700, color: '#4f46e5' }}>ADMIN</Typography>
+                  <Typography variant="caption" color="text.secondary">admin / admin123</Typography>
+                </Stack>
+                <Typography variant="caption" sx={{ fontStyle: 'italic', color: '#64748b' }}>
+                  Use these credentials to explore the system features.
+                </Typography>
+              </Box>
+            </form>
+          </Box>
         </Paper>
-      </Box>
-    </Container>
+      </Fade>
+    </Box>
   );
 };
 

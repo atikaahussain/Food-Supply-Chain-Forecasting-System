@@ -179,8 +179,20 @@ class ReportGenerator:
         story.append(footer)
         
         # Build PDF
-        doc.build(story)
-        print(f"✅ Report saved to: {output_path}")
+        try:
+            doc.build(story)
+            print(f"✅ Report saved to: {output_path}")
+        except Exception as build_error:
+            print(f"❌ PDF Build Error: {str(build_error)}")
+            # Fallback: create a very simple PDF if complex one fails
+            try:
+                doc_fb = SimpleDocTemplate(output_path, pagesize=letter)
+                story_fb = [Paragraph("Report (Basic Fallback)", self.title_style)]
+                story_fb.append(Paragraph(f"Error generating full report visualization: {str(build_error)}", self.styles['Normal']))
+                doc_fb.build(story_fb)
+                print(f"✅ Basic report saved as fallback to: {output_path}")
+            except:
+                raise build_error
         
         return output_path
     
@@ -309,8 +321,20 @@ class ReportGenerator:
                 story.append(Spacer(1, 0.3*inch))
         
         # Build PDF
-        doc.build(story)
-        print(f"✅ Report saved to: {output_path}")
+        try:
+            doc.build(story)
+            print(f"✅ Report saved to: {output_path}")
+        except Exception as build_error:
+            print(f"❌ PDF Build Error (Inventory): {str(build_error)}")
+            # Fallback: create a very simple PDF if complex one fails
+            try:
+                doc_fb = SimpleDocTemplate(output_path, pagesize=letter)
+                story_fb = [Paragraph("Inventory Report (Basic Fallback)", self.title_style)]
+                story_fb.append(Paragraph(f"Error generating full inventory report: {str(build_error)}", self.styles['Normal']))
+                doc_fb.build(story_fb)
+                print(f"✅ Basic inventory report saved as fallback to: {output_path}")
+            except:
+                raise build_error
         
         return output_path
     
@@ -370,20 +394,27 @@ class ReportGenerator:
         try:
             fig, ax = plt.subplots(figsize=(10, 6))
             
-            dates = forecast_data.get('forecast_dates', [])
-            predictions = forecast_data.get('next_week_predictions', [])
+            if not dates or not predictions:
+                print("⚠️  No data points for chart generation")
+                plt.close()
+                return None
             
-            ax.plot(dates, predictions, marker='o', linewidth=2, markersize=8, color='#1976d2')
+            if len(dates) == 1:
+                ax.bar(dates, predictions, color='#1976d2', width=0.4)
+            else:
+                ax.plot(dates, predictions, marker='o', linewidth=2, markersize=8, color='#1976d2')
+            
             ax.set_xlabel('Date', fontsize=12)
             ax.set_ylabel('Predicted Customers', fontsize=12)
-            ax.set_title('Next 7 Days Customer Forecast', fontsize=14, fontweight='bold')
+            ax.set_title('Customer Forecast', fontsize=14, fontweight='bold')
             ax.grid(True, alpha=0.3)
             
             plt.xticks(rotation=45)
             plt.tight_layout()
             
             # Save to temporary file
-            temp_path = 'temp_chart.png'
+            base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+            temp_path = os.path.join(base_dir, 'temp_chart.png')
             plt.savefig(temp_path, dpi=150, bbox_inches='tight')
             plt.close()
             
